@@ -15,8 +15,8 @@ except ImportError:
 from distutils.core import setup
 
 setup(
-    name='hxntools',
+    name='csx2tools',
     version="0.0.0",
     author='Brookhaven National Laboratory',
-    packages=['hxntools'],
+    packages=['csx2tools'],
 )

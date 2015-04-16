@@ -29,11 +29,11 @@ class ComputeScan(Scan):
         print_estimate_table_det_rows(estimates)
 
 
-class HXNDScan(DScan, ComputeScan):
+class CSX2DScan(DScan, ComputeScan):
     pass
 
 
-class HXNAScan(AScan, ComputeScan):
+class CSX2AScan(AScan, ComputeScan):
     pass
 
 
