@@ -15,8 +15,8 @@ except ImportError:
 from distutils.core import setup
 
 setup(
-    name='csx2tools',
+    name='srxtools',
     version="0.0.0",
     author='Brookhaven National Laboratory',
-    packages=['csx2tools'],
+    packages=['srxtools'],
 )

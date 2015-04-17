@@ -29,11 +29,11 @@ class ComputeScan(Scan):
         print_estimate_table_det_rows(estimates)
 
 
-class CSX2DScan(DScan, ComputeScan):
+class SRXDScan(DScan, ComputeScan):
     pass
 
 
-class CSX2AScan(AScan, ComputeScan):
+class SRXAScan(AScan, ComputeScan):
     pass
 
 
@@ -60,7 +60,6 @@ def print_estimate_table_det_rows(estimate_dict):
     estimate_keys = set()
     for pos, det_dict in estimate_dict.items():
         for det, est in det_dict.items():
-            print('est: {}'.format(est))
             for k, v in est.items():
                 estimate_keys.add(k)
     estimate_keys = list(estimate_keys)
@@ -80,7 +79,6 @@ def print_estimate_table_det_rows(estimate_dict):
             for key in estimate_keys:
                 row.append(est_dict.get(key, ''))
             table.add_row(row)
-        print("Estimates for x axis: {}".format(pos))
         print(table)
 
 
@@ -146,7 +144,6 @@ def print_estimate_table_det_cols(estimate_dict):
                 rows_dict[estimate_key].append(est_dict.get(estimate_key, ''))
         for row in rows_dict.values():
             table.add_row(row)
-        print("Estimates for x axis: {}".format(pos))
         print(table)
 
 

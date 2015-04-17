@@ -1,3 +1,3 @@
-csx2tools
+srxtools
 ========
-Python library for tools to be used at 23id2 beamline at NSLS-II
+Python library for tools to be used at the 05id1 beamline at NSLS-II
