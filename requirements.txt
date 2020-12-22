@@ -1,0 +1,10 @@
+h5py
+numpy
+area_detector_handlers
+ophyd
+nslsii
+h5py
+numpy
+area_detector_handlers
+ophyd
+nslsii
