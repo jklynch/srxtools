@@ -1,18 +1,21 @@
+from collections import OrderedDict
 from enum import Enum
-import os
-import sys
 import time as ttime
 
 import h5py
 
 import numpy as np
 
-from ophyd import Component as Cpt, Signal, DeviceStatus
+from ophyd import Component as Cpt, EpicsSignal, Signal, DeviceStatus
 from ophyd.device import Staged
+
+from ophyd.areadetector import Xspress3Detector
 from ophyd.areadetector.filestore_mixins import FileStorePluginBase
 from ophyd.areadetector.plugins import PluginBase
 
-from nslsii.xspress3v33 import (
+from ophyd.utils.epics_pvs import set_and_wait
+
+from nslsii.areadetector.xspress3 import (
     XspressTrigger,
     #Xspress3Detector,
     Xspress3Channel,
@@ -39,9 +42,6 @@ class BulkXspress(HandlerBase):
 
     def __call__(self):
         return self._handle["entry/instrument/detector/data"][:]
-
-
-# db.reg.register_handler(BulkXspress.HANDLER_NAME, BulkXspress, overwrite=True)
 
 
 class Xspress3FileStoreFlyable(Xspress3FileStore):
@@ -71,7 +71,9 @@ class Xspress3FileStoreFlyable(Xspress3FileStore):
                 self, key, timestamp, datum_kwargs
             )
 
-    def warmup(self):
+    # TODO try to remove this warmup method
+    # the only difference between this method and HDF5Plugin.warmup is one fewer PV
+    def old_warmup(self):
         """
         A convenience method for 'priming' the plugin.
         The plugin has to 'see' one acquisition before it is ready to capture.
@@ -85,13 +87,13 @@ class Xspress3FileStoreFlyable(Xspress3FileStore):
         set_and_wait(self.enable, 1)
         sigs = OrderedDict(
             [
-                (self.parent.settings.array_callbacks, 1),
-                (self.parent.settings.image_mode, "Single"),
-                (self.parent.settings.trigger_mode, "Internal"),
+                (self.parent.cam.array_callbacks, 1),
+                (self.parent.cam.image_mode, "Single"),
+                (self.parent.cam.trigger_mode, "Internal"),
                 # In case the acquisition time is set very long
-                (self.parent.settings.acquire_time, 1),
-                # (self.parent.settings.acquire_period, 1),
-                (self.parent.settings.acquire, 1),
+                (self.parent.cam.acquire_time, 1),
+                # (self.parent.cam.acquire_period, 1),
+                (self.parent.cam.acquire, 1),
             ]
         )
 
@@ -116,7 +118,7 @@ class Xspress3FileStoreFlyable(Xspress3FileStore):
                 "external": "FileStore:",
                 "dtype": "array",
                 # TODO do not hard code
-                "shape": (self.parent.settings.num_images.get(), 3, 4096),
+                "shape": (self.parent.cam.num_images.get(), 3, 4096),
                 "source": self.prefix,
             }
             return {self.parent._f_key: spec}
@@ -130,7 +132,7 @@ class SRXXspressTrigger(XspressTrigger):
             raise RuntimeError("not staged")
 
         self._status = DeviceStatus(self)
-        self.settings.erase.put(1)
+        self.cam.erase.put(1)
         self._acquisition_signal.put(1, wait=False)
         trigger_time = ttime.time()
         if self._mode is SRXMode.step:
@@ -166,11 +168,12 @@ class SrxXspress3Detector(SRXXspressTrigger, Xspress3Detector):
     #       (XF:05IDD-ES{Xsp:1}:ERASE_PROC_ResetFilter)
     #   det_settings.update_attr (XF:05IDD-ES{Xsp:1}:UPDATE_AttrUpdate)
     #   det_settings.update (XF:05IDD-ES{Xsp:1}:UPDATE)
-    roi_data = Cpt(PluginBase, "ROIDATA:")
+    
+    # TODO: remove this, it is not a PV anymore
+    # roi_data = Cpt(PluginBase, "ROIDATA:")
 
-    erase = Cpt(EpicsSignal, "ERASE")
-
-    array_counter = Cpt(EpicsSignal, "ArrayCounter_RBV")
+    # TODO: remove this, it is on cam
+    # array_counter = Cpt(EpicsSignal, "ArrayCounter_RBV")
 
     # Currently only using three channels. Uncomment these to enable more
     channel1 = Cpt(Xspress3Channel, "C1_", channel_num=1, read_attrs=["rois"])
@@ -183,14 +186,14 @@ class SrxXspress3Detector(SRXXspressTrigger, Xspress3Detector):
     # channel7 = Cpt(Xspress3Channel, 'C7_', channel_num=7)
     # channel8 = Cpt(Xspress3Channel, 'C8_', channel_num=8)
 
-    create_dir = Cpt(EpicsSignal, "HDF5:FileCreateDir")
+    create_dir = Cpt(EpicsSignal, "HDF1:FileCreateDir")
 
     hdf5 = Cpt(
         Xspress3FileStoreFlyable,
-        "HDF5:",
+        "HDF1:",
         read_path_template="/nsls2/xf05id1/XF05ID1/XSPRESS3/%Y/%m/%d/",
         # write_path_template='/epics/data/%Y/%m/%d/', #SRX old xspress3
-        write_path_template="/home/xspress3/data/%Y/%m/%d/",#TES xspress3
+        write_path_template="/home/xspress3/data/%Y/%m/%d/",  # TES xspress3
         root="/nsls2/xf05id1/XF05ID1",
     )
 
@@ -214,7 +217,7 @@ class SrxXspress3Detector(SRXXspressTrigger, Xspress3Detector):
                 "external_trig",
                 "total_points",
                 "spectra_per_point",
-                "settings",
+                "cam",
                 "rewindable",
             ]
         if read_attrs is None:
@@ -235,15 +238,17 @@ class SrxXspress3Detector(SRXXspressTrigger, Xspress3Detector):
 
     def stop(self, *, success=False):
         ret = super().stop()
-        # todo move this into the stop method of the settings object?
-        self.settings.acquire.put(0)
+        # todo move this into the stop method of the cam object?
+        self.cam.acquire.put(0)
         self.hdf5.stop(success=success)
         return ret
 
     def stage(self):
         # Erase what is currently in the system
         # This prevents a single hot pixel in the upper-left corner of a map
-        xs.erase.put(0)
+        
+        self.cam.erase.put(0)
+    
         # do the latching
         if self.fly_next.get():
             self.fly_next.put(False)
@@ -256,64 +261,6 @@ class SrxXspress3Detector(SRXXspressTrigger, Xspress3Detector):
         finally:
             self._mode = SRXMode.step
         return ret
-
-
-# try:
-#     xs = SrxXspress3Detector("XF:05IDD-ES{Xsp:1}:", name="xs")
-#     if "TOUCHBEAMLINE" in os.environ and os.environ["TOUCHBEAMLINE"] == 1:
-#         xs.channel1.rois.read_attrs = ["roi{:02}".format(j)
-#                                        for j in [1, 2, 3, 4]]
-#         xs.channel2.rois.read_attrs = ["roi{:02}".format(j)
-#                                        for j in [1, 2, 3, 4]]
-#         xs.channel3.rois.read_attrs = ["roi{:02}".format(j)
-#                                        for j in [1, 2, 3, 4]]
-#         xs.channel4.rois.read_attrs = ["roi{:02}".format(j)
-#                                        for j in [1, 2, 3, 4]]
-#         xs.hdf5.num_extra_dims.put(0)
-#         xs.channel2.vis_enabled.put(1)
-#         xs.channel3.vis_enabled.put(1)
-#         xs.channel4.vis_enabled.put(1)
-#         xs.settings.num_channels.put(4) #4 for ME4 detector
-
-#         xs.settings.configuration_attrs = [
-#             "acquire_period",
-#             "acquire_time",
-#             "gain",
-#             "image_mode",
-#             "manufacturer",
-#             "model",
-#             "num_exposures",
-#             "num_images",
-#             "temperature",
-#             "temperature_actual",
-#             "trigger_mode",
-#             "config_path",
-#             "config_save_path",
-#             "invert_f0",
-#             "invert_veto",
-#             "xsp_name",
-#             "num_channels",
-#             "num_frames_config",
-#             "run_flags",
-#             "trigger_signal",
-#         ]
-
-#         # This is necessary for when the IOC restarts
-#         # We have to trigger one image for the hdf5 plugin to work correctly
-#         # else, we get file writing errors
-#         xs.hdf5.warmup()
-
-#         # Rename the ROIs
-#         for i in range(1, 4):
-#             ch = getattr(xs.channel1.rois, "roi{:02}.value".format(i))
-#             ch.name = "ROI_{:02}".format(i)
-# except TimeoutError:
-#     xs = None
-#     print("\nCannot connect to xs. Continuing without device.\n")
-# except Exception as ex:
-#     xs = None
-#     print("\nUnexpected error connecting to xs.\n")
-#     print(ex, end="\n\n")
 
 
 # Working xs2 detector
@@ -338,11 +285,11 @@ class SrxXspress3Detector2(SRXXspressTrigger, Xspress3Detector):
 
     array_counter = Cpt(EpicsSignal, "ArrayCounter_RBV")
 
-    create_dir = Cpt(EpicsSignal, "HDF5:FileCreateDir")
+    create_dir = Cpt(EpicsSignal, "HDF1:FileCreateDir")
 
     hdf5 = Cpt(
         Xspress3FileStoreFlyable,
-        "HDF5:",
+        "HDF1:",
         read_path_template="/nsls2/xf05id1/data/2020-2/XS3MINI",
         write_path_template="/home/xspress3/data/SRX/2020-2",
         root="/nsls2/xf05id1",
@@ -388,7 +335,7 @@ class SrxXspress3Detector2(SRXXspressTrigger, Xspress3Detector):
     def stop(self, *, success=False):
         ret = super().stop()
         # todo move this into the stop method of the settings object?
-        self.settings.acquire.put(0)
+        self.cam.acquire.put(0)
         self.hdf5.stop(success=success)
         return ret
 

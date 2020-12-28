@@ -26,7 +26,7 @@ pip install --upgrade pip
 
 here = path.abspath(path.dirname(__file__))
 
-with open(path.join(here, "README.rst"), encoding="utf-8") as readme_file:
+with open(path.join(here, "README.md"), encoding="utf-8") as readme_file:
     readme = readme_file.read()
 
 with open(path.join(here, "requirements.txt")) as requirements_file:
@@ -41,10 +41,10 @@ setup(
     name="srxtools",
     version=versioneer.get_version(),
     cmdclass=versioneer.get_cmdclass(),
-    description="Toolbox of widgets for visualizing streaming data",
+    description="",
     long_description=readme,
     author="Brookhaven National Lab",
-    author_email="dallan@bnl.gov",
+    author_email="",
     url="https://github.com/NSLS-II-SRX/srxtools",
     python_requires=">={}".format(".".join(str(n) for n in min_version)),
     packages=find_packages(exclude=["docs", "tests"]),
