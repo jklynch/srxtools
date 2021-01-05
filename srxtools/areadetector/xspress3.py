@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from enum import Enum
+import logging
 import time as ttime
 
 import h5py
@@ -20,6 +21,10 @@ from nslsii.areadetector.xspress3 import (
     #Xspress3Detector,
     Xspress3Channel,
     Xspress3FileStore,
+    Mca,
+    McaRoi,
+    McaSum,
+    Sca
 )
 
 try:
@@ -27,6 +32,9 @@ try:
     from area_detector_handlers.handlers import Xspress3HDF5Handler
 except ImportError:
     from databroker.assets.handlers import Xspress3HDF5Handler, HandlerBase
+
+
+log = logging.getLogger("srxtools")
 
 
 class SRXMode(Enum):
@@ -72,7 +80,8 @@ class Xspress3FileStoreFlyable(Xspress3FileStore):
             )
 
     # TODO try to remove this warmup method
-    # the only difference between this method and HDF5Plugin.warmup is one fewer PV
+    # the only difference between this method and HDF5Plugin.warmup is
+    # that this method does not handle cam.acquire_period
     def old_warmup(self):
         """
         A convenience method for 'priming' the plugin.
@@ -175,11 +184,12 @@ class SrxXspress3Detector(SRXXspressTrigger, Xspress3Detector):
     # TODO: remove this, it is on cam
     # array_counter = Cpt(EpicsSignal, "ArrayCounter_RBV")
 
+    # TODO: should these read_attrs be configured by the Xspress3Channel class?
     # Currently only using three channels. Uncomment these to enable more
-    channel1 = Cpt(Xspress3Channel, "C1_", channel_num=1, read_attrs=["rois"])
-    channel2 = Cpt(Xspress3Channel, "C2_", channel_num=2, read_attrs=["rois"])
-    channel3 = Cpt(Xspress3Channel, "C3_", channel_num=3, read_attrs=["rois"])
-    channel4 = Cpt(Xspress3Channel, "C4_", channel_num=4, read_attrs=["rois"])
+    channel1 = Cpt(Xspress3Channel, "C1_", channel_num=1, read_attrs=["mca_1"])
+    channel2 = Cpt(Xspress3Channel, "C2_", channel_num=2, read_attrs=["mca_1"])
+    channel3 = Cpt(Xspress3Channel, "C3_", channel_num=3, read_attrs=["mca_1"])
+    channel4 = Cpt(Xspress3Channel, "C4_", channel_num=4, read_attrs=["mca_1"])
     # channels:
     # channel5 = Cpt(Xspress3Channel, 'C5_', channel_num=5)
     # channel6 = Cpt(Xspress3Channel, 'C6_', channel_num=6)
@@ -191,10 +201,12 @@ class SrxXspress3Detector(SRXXspressTrigger, Xspress3Detector):
     hdf5 = Cpt(
         Xspress3FileStoreFlyable,
         "HDF1:",
-        read_path_template="/nsls2/xf05id1/XF05ID1/XSPRESS3/%Y/%m/%d/",
-        # write_path_template='/epics/data/%Y/%m/%d/', #SRX old xspress3
-        write_path_template="/home/xspress3/data/%Y/%m/%d/",  # TES xspress3
-        root="/nsls2/xf05id1/XF05ID1",
+        # read_path_template="/nsls2/xf05id1/XF05ID1/XSPRESS3/%Y/%m/%d/",
+        read_path_template="/home/oksana/nsls2/",
+        # write_path_template="/home/xspress3/data/%Y/%m/%d/",  # TES xspress3
+        write_path_template="/home/oksana/nsls2/",
+        # root="/nsls2/xf05id1/XF05ID1",
+        root="/home/oksana/"
     )
 
     # this is used as a latch to put the xspress3 into 'bulk' mode
@@ -246,9 +258,9 @@ class SrxXspress3Detector(SRXXspressTrigger, Xspress3Detector):
     def stage(self):
         # Erase what is currently in the system
         # This prevents a single hot pixel in the upper-left corner of a map
-        
+
         self.cam.erase.put(0)
-    
+
         # do the latching
         if self.fly_next.get():
             self.fly_next.put(False)
